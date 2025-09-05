@@ -35,10 +35,11 @@ export async function POST(request: Request) {
     return NextResponse.json({
       message: completion.choices[0].message
     });
-  } catch (error: any) {
-    console.error('Error in chat API:', error);
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'An error occurred';
+    console.error('Error in chat API:', errorMessage);
     return NextResponse.json(
-      { error: error.message || 'An error occurred' },
+      { error: errorMessage },
       { status: 500 }
     );
   }
