@@ -1,12 +1,24 @@
 import { OpenAI } from 'openai';
 import { NextResponse } from 'next/server';
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+// Initialize OpenAI client only when the API key is available
+let openai: OpenAI | null = null;
+if (process.env.OPENAI_API_KEY) {
+  openai = new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+  });
+}
 
 export async function POST(request: Request) {
   try {
+    // Check if the OpenAI client is initialized
+    if (!openai) {
+      return NextResponse.json(
+        { error: 'OpenAI API key is not configured' },
+        { status: 500 }
+      );
+    }
+    
     const body = await request.json();
     const { action, text } = body;
 
