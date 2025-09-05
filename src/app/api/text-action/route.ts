@@ -56,9 +56,10 @@ export async function POST(request: Request) {
     const result = completion.choices[0]?.message.content || text;
     
     return NextResponse.json({ result });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'An error occurred';
     return NextResponse.json(
-      { error: error.message || 'An error occurred' },
+      { error: errorMessage },
       { status: 500 }
     );
   }

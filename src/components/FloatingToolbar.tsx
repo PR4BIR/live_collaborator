@@ -7,9 +7,6 @@ import {
   DropdownMenuItem 
 } from './ui/dropdown-menu';
 import { 
-  AlignLeft, 
-  AlignCenter, 
-  AlignRight,
   Table2,
   Minimize,
   Maximize,

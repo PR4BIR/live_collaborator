@@ -42,10 +42,11 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json({ result });
-  } catch (error: any) {
-    console.error('Error in mock text action API:', error);
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'An error occurred';
+    console.error('Error in mock text action API:', errorMessage);
     return NextResponse.json(
-      { error: error.message || 'An error occurred' },
+      { error: errorMessage },
       { status: 500 }
     );
   }

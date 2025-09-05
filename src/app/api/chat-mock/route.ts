@@ -34,10 +34,11 @@ export async function POST(request: Request) {
         content: responseContent
       }
     });
-  } catch (error: any) {
-    console.error('Error in mock chat API:', error);
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'An error occurred';
+    console.error('Error in mock chat API:', errorMessage);
     return NextResponse.json(
-      { error: error.message || 'An error occurred' },
+      { error: errorMessage },
       { status: 500 }
     );
   }
