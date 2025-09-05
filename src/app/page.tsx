@@ -1,103 +1,219 @@
-import Image from "next/image";
+'use client';
+
+import React, { useState, useEffect, useCallback } from 'react';
+import { toast, Toaster } from 'sonner';
+import Editor from '@/components/Editor';
+import Chat from '@/components/Chat';
+import FloatingToolbar from '@/components/FloatingToolbar';
+import { APIToggle } from '@/components/APIToggle';
+
+// Sample initial code
+const DEFAULT_CODE = `// Welcome to the Collaborative Editor!
+// You can type or paste code here.
+// Select text to see the floating toolbar with AI actions.
+// Use the chat on the right to ask for help or request edits.
+
+function greet(name) {
+  return \`Hello, \${name}!\`;
+}
+
+console.log(greet('World'));
+`;
+
+interface Message {
+  role: 'user' | 'assistant';
+  content: string;
+}
 
 export default function Home() {
-  return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const [editorContent, setEditorContent] = useState(DEFAULT_CODE);
+  const [messages, setMessages] = useState<Message[]>([
+    {
+      role: 'assistant',
+      content: 'Hi! I\'m your AI assistant. I can help with your code or text. You can also select text in the editor to use the floating toolbar for quick actions.'
+    }
+  ]);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [useMockAPI, setUseMockAPI] = useState(true); // Use mock API by default
+  
+  // Selection state
+  const [selectedText, setSelectedText] = useState('');
+  const [selectionRange, setSelectionRange] = useState({ from: 0, to: 0 });
+  const [toolbarVisible, setToolbarVisible] = useState(false);
+  const [toolbarPosition, setToolbarPosition] = useState({ x: 0, y: 0 });
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+  // Reset toolbar when content changes
+  useEffect(() => {
+    setToolbarVisible(false);
+  }, [editorContent]);
+
+  // Handle selection change
+  const handleSelectionChange = useCallback((text: string, from: number, to: number) => {
+    if (text) {
+      setSelectedText(text);
+      setSelectionRange({ from, to });
+      
+      // Calculate toolbar position - this is a simplistic approach
+      // In a real app, you'd want to use getBoundingClientRect() to position it properly
+      const selection = window.getSelection();
+      if (selection && selection.rangeCount > 0) {
+        const range = selection.getRangeAt(0);
+        const rect = range.getBoundingClientRect();
+        
+        setToolbarPosition({
+          x: rect.left + (rect.width / 2),
+          y: rect.top - 10
+        });
+        setToolbarVisible(true);
+      }
+    } else {
+      setToolbarVisible(false);
+    }
+  }, []);
+
+  // Handle sending a message to the AI
+  const handleSendMessage = async (message: string) => {
+    try {
+      setIsProcessing(true);
+      
+      // Add user message
+      const newMessages = [
+        ...messages,
+        { role: 'user' as const, content: message }
+      ];
+      setMessages(newMessages);
+      
+      // Send to API (either mock or real)
+      const endpoint = useMockAPI ? '/api/chat-mock' : '/api/chat';
+      console.log(`Using ${useMockAPI ? 'mock' : 'real'} API endpoint: ${endpoint}`);
+      
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: newMessages.map(m => ({ role: m.role, content: m.content })),
+        }),
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to send message');
+      }
+      
+      const data = await response.json();
+      console.log("API response:", data);
+      
+      if (!data.message || !data.message.content) {
+        throw new Error('Invalid response format from API');
+      }
+      
+      const aiMessage = data.message.content;
+      
+      // Check if response contains edit instructions
+      if (aiMessage.includes('[EDIT]')) {
+        const editInstruction = aiMessage.split('[EDIT]')[1].split('[START_EDIT]')[0].trim();
+        const editContentMatch = aiMessage.match(/\[START_EDIT\]([\s\S]*)\[END_EDIT\]/);
+        const editContent = editContentMatch ? editContentMatch[1].trim() : '';
+        
+        // Apply the edit
+        if (editContent) {
+          setEditorContent(editContent);
+          toast.success('AI applied edits to the editor content');
+        }
+        
+        // Add AI response to chat
+        setMessages([...newMessages, { role: 'assistant' as const, content: editInstruction }]);
+      } else {
+        // Just a regular message
+        setMessages([...newMessages, { role: 'assistant' as const, content: aiMessage }]);
+      }
+    } catch (error) {
+      console.error('Error sending message:', error);
+      toast.error('Failed to get AI response');
+      
+      // Add error message to chat
+      setMessages([
+        ...messages,
+        { role: 'user' as const, content: message },
+        { role: 'assistant' as const, content: 'Sorry, I encountered an error processing your request.' }
+      ]);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+  
+  // Handle toolbar actions
+  const handleToolbarAction = async (action: string, text: string) => {
+    try {
+      setToolbarVisible(false);
+      setIsProcessing(true);
+      
+      // Call API to process the text action (either mock or real)
+      const endpoint = useMockAPI ? '/api/text-action-mock' : '/api/text-action';
+      console.log(`Using ${useMockAPI ? 'mock' : 'real'} API endpoint for text action: ${endpoint}`);
+      
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, text }),
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to process text action');
+      }
+      
+      const data = await response.json();
+      
+      // Replace the selected text in the editor
+      if (data.result) {
+        const before = editorContent.substring(0, selectionRange.from);
+        const after = editorContent.substring(selectionRange.to);
+        setEditorContent(before + data.result + after);
+        toast.success(`Successfully applied ${action}`);
+      }
+    } catch (error) {
+      console.error('Error processing text action:', error);
+      toast.error(`Failed to apply ${action}`);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  return (
+    <main className="flex h-screen">
+      {/* Editor section */}
+      <div className="flex-1 h-full p-4 relative">
+        <div className="flex justify-between items-center mb-4">
+          <h1 className="text-2xl font-bold">Live Collaborative Editor</h1>
+          <APIToggle useMockAPI={useMockAPI} onToggle={setUseMockAPI} />
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
+        
+        <div className="h-[calc(100%-3rem)] relative">
+          <Editor 
+            value={editorContent} 
+            onChange={setEditorContent}
+            onSelectionChange={handleSelectionChange}
           />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
+          
+          <FloatingToolbar 
+            visible={toolbarVisible}
+            position={toolbarPosition}
+            selectedText={selectedText}
+            onAction={handleToolbarAction}
           />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
+        </div>
+      </div>
+      
+      {/* Chat sidebar */}
+      <div className="w-1/3 h-full border-l">
+        <Chat 
+          onSendMessage={handleSendMessage}
+          messages={messages}
+          isProcessing={isProcessing}
+        />
+      </div>
+      
+      {/* Toast notifications */}
+      <Toaster position="bottom-right" />
+    </main>
   );
 }
